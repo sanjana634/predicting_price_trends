@@ -1,0 +1,388 @@
+---
+title: " Correlation, Regression, and Noise Analysis"
+author: "Harjot Singh"
+date: "2026-05-03"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+  pdf_document: default
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+
+options(scipen = 999)
+```
+
+# Purpose
+
+This R Markdown file adds the missing parts of Step 2 without repeating the team's existing graphs.
+
+The team already has:
+
+1. A normalized mortgage rate vs. HPI time-series graph.
+2. An income vs. housing prices dual-axis time-series graph.
+
+This file focuses on the remaining Step 2 work:
+
+- Scatter plots with regression lines
+- Correlation matrix
+- Correlation heatmap
+- Linear regression models
+- R-squared comparison
+- Actual vs. predicted HPI plot
+- Residual/noise plot
+- RMSE and MAE error metrics
+- HPI yearly range as another noise/variation check
+
+# Load Data
+
+```{r load-data}
+
+
+required_files <- c(
+  "CASTHPI_yearly_cleaned.csv",
+  "cleaned_income_data.csv",
+  "cleaned_mortgage_rates_annual_avg.csv"
+)
+
+missing_files <- required_files[!file.exists(required_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    paste(
+      "Missing file(s):",
+      paste(missing_files, collapse = ", "),
+      "\nCurrent working directory is:",
+      getwd(),
+      "\nMove this Rmd file into the same folder as the CSV files or set the working directory correctly."
+    )
+  )
+}
+
+hpi_data <- read_csv("CASTHPI_yearly_cleaned.csv")
+
+income_data <- read_csv("cleaned_income_data.csv") %>%
+  rename(Year = Date)
+
+mortgage_data <- read_csv(
+  "cleaned_mortgage_rates_annual_avg.csv",
+  skip = 7,
+  col_names = c(
+    "Year",
+    "Average_Mortgage_Rate",
+    "Lowest_Mortgage_Rate",
+    "Highest_Mortgage_Rate",
+    "Number_Of_Weeks"
+  )
+)
+
+glimpse(hpi_data)
+glimpse(income_data)
+glimpse(mortgage_data)
+```
+
+# Clean and Merge Data
+
+```{r clean-and-merge}
+hpi_data <- hpi_data %>%
+  mutate(
+    Year = as.numeric(Year),
+    Yearly_Average_HPI = as.numeric(Yearly_Average_HPI),
+    Lowest_Quarterly_HPI = as.numeric(Lowest_Quarterly_HPI),
+    Highest_Quarterly_HPI = as.numeric(Highest_Quarterly_HPI)
+  )
+
+income_data <- income_data %>%
+  mutate(
+    Year = as.numeric(Year),
+    Median_Household_Income = as.numeric(Median_Household_Income)
+  )
+
+mortgage_data <- mortgage_data %>%
+  mutate(
+    Year = as.numeric(Year),
+    Average_Mortgage_Rate = as.numeric(Average_Mortgage_Rate),
+    Lowest_Mortgage_Rate = as.numeric(Lowest_Mortgage_Rate),
+    Highest_Mortgage_Rate = as.numeric(Highest_Mortgage_Rate),
+    Number_Of_Weeks = as.numeric(Number_Of_Weeks)
+  )
+
+combined_data <- hpi_data %>%
+  left_join(income_data, by = "Year") %>%
+  left_join(mortgage_data, by = "Year") %>%
+  mutate(
+    HPI_Range = Highest_Quarterly_HPI - Lowest_Quarterly_HPI
+  ) %>%
+  drop_na()
+
+glimpse(combined_data)
+
+knitr::kable(
+  head(combined_data),
+  caption = "Preview of merged housing, income, and mortgage dataset"
+)
+```
+
+# Scatter Plots with Regression Lines
+
+These plots are different from the team's existing time-series graphs. Instead of showing variables over time, these show the direct relationship between the predictor variable and HPI.
+
+## Median Income vs. HPI
+
+```{r income-vs-hpi-scatter}
+income_vs_hpi_scatter <- ggplot(
+  combined_data,
+  aes(x = Median_Household_Income, y = Yearly_Average_HPI)
+) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Median Income vs. Housing Price Index",
+    x = "Median Household Income ($)",
+    y = "Yearly Average HPI"
+  )
+
+income_vs_hpi_scatter
+```
+
+## Mortgage Rate vs. HPI
+
+```{r mortgage-vs-hpi-scatter}
+mortgage_vs_hpi_scatter <- ggplot(
+  combined_data,
+  aes(x = Average_Mortgage_Rate, y = Yearly_Average_HPI)
+) +
+  geom_point(color = "darkgreen") +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Mortgage Rate vs. Housing Price Index",
+    x = "Average 30-Year Mortgage Rate (%)",
+    y = "Yearly Average HPI"
+  )
+
+mortgage_vs_hpi_scatter
+```
+
+# Correlation Matrix
+
+The correlation matrix shows how strongly the variables move together linearly.
+
+Values close to `1` show a strong positive relationship.  
+Values close to `-1` show a strong negative relationship.  
+Values close to `0` show a weak linear relationship.
+
+```{r correlation-matrix}
+correlation_data <- combined_data %>%
+  select(
+    Yearly_Average_HPI,
+    Median_Household_Income,
+    Average_Mortgage_Rate,
+    HPI_Range
+  )
+
+cor_matrix <- cor(correlation_data, use = "complete.obs")
+
+knitr::kable(
+  round(cor_matrix, 3),
+  caption = "Correlation matrix for HPI, income, mortgage rate, and HPI range"
+)
+```
+
+## Correlation Heatmap
+
+```{r correlation-heatmap}
+cor_df <- as.data.frame(as.table(cor_matrix))
+
+correlation_heatmap <- ggplot(cor_df, aes(x = Var1, y = Var2, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = round(Freq, 2)), size = 4) +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limits = c(-1, 1)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Correlation Matrix Heatmap",
+    x = "",
+    y = "",
+    fill = "Correlation"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+correlation_heatmap
+```
+
+# Linear Regression and R-Squared
+
+R-squared tells us how much of the variation in HPI is explained by each model.
+
+This section compares three models:
+
+1. HPI predicted by median income
+2. HPI predicted by mortgage rate
+3. HPI predicted by both median income and mortgage rate
+
+```{r linear-regression}
+model_income <- lm(
+  Yearly_Average_HPI ~ Median_Household_Income,
+  data = combined_data
+)
+
+model_mortgage <- lm(
+  Yearly_Average_HPI ~ Average_Mortgage_Rate,
+  data = combined_data
+)
+
+model_full <- lm(
+  Yearly_Average_HPI ~ Median_Household_Income + Average_Mortgage_Rate,
+  data = combined_data
+)
+
+r2_table <- tibble(
+  Model = c(
+    "HPI predicted by Median Income",
+    "HPI predicted by Mortgage Rate",
+    "HPI predicted by Median Income and Mortgage Rate"
+  ),
+  R_squared = c(
+    summary(model_income)$r.squared,
+    summary(model_mortgage)$r.squared,
+    summary(model_full)$r.squared
+  ),
+  Adjusted_R_squared = c(
+    summary(model_income)$adj.r.squared,
+    summary(model_mortgage)$adj.r.squared,
+    summary(model_full)$adj.r.squared
+  )
+)
+
+knitr::kable(
+  r2_table,
+  digits = 4,
+  caption = "R-squared comparison of linear regression models"
+)
+```
+
+## Full Model Summary
+
+```{r full-model-summary}
+summary(model_full)
+```
+
+# Actual vs. Predicted HPI
+
+This plot shows how close the combined regression model gets to the real HPI values.
+
+```{r actual-vs-predicted}
+combined_data <- combined_data %>%
+  mutate(
+    Predicted_HPI = predict(model_full, newdata = combined_data),
+    Residual = Yearly_Average_HPI - Predicted_HPI
+  )
+
+actual_vs_predicted_plot <- ggplot(combined_data, aes(x = Year)) +
+  geom_line(aes(y = Yearly_Average_HPI, color = "Actual HPI"), linewidth = 1) +
+  geom_line(aes(y = Predicted_HPI, color = "Predicted HPI"), linewidth = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "Actual HPI vs. Predicted HPI",
+    x = "Year",
+    y = "House Price Index",
+    color = ""
+  )
+
+actual_vs_predicted_plot
+```
+
+# Residual Plot and Noise Check
+
+Residuals are prediction errors.
+
+If the residuals are randomly spread around `0`, the model is doing a better job. If there is a clear pattern, then the model is missing some important factor or the relationship is not fully linear.
+
+```{r residual-plot}
+residual_plot <- ggplot(combined_data, aes(x = Year, y = Residual)) +
+  geom_point(color = "purple") +
+  geom_line(color = "purple") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "Residual Plot: Model Error Over Time",
+    x = "Year",
+    y = "Residual"
+  )
+
+residual_plot
+```
+
+# Error Metrics
+
+RMSE and MAE measure prediction error.
+
+Lower values mean less error.
+
+```{r error-metrics}
+rmse <- sqrt(mean(combined_data$Residual^2))
+mae <- mean(abs(combined_data$Residual))
+
+error_table <- tibble(
+  Metric = c("RMSE", "MAE"),
+  Value = c(rmse, mae)
+)
+
+knitr::kable(
+  error_table,
+  digits = 4,
+  caption = "Regression model error metrics"
+)
+```
+
+# HPI Range as Noise/Variation
+
+HPI range measures the difference between the highest quarterly HPI and the lowest quarterly HPI in the same year.
+
+A larger range means there was more movement in housing prices during that year.
+
+```{r hpi-range-plot}
+hpi_range_plot <- ggplot(combined_data, aes(x = Year, y = HPI_Range)) +
+  geom_line(linewidth = 1, color = "orange") +
+  geom_point(color = "orange") +
+  theme_minimal() +
+  labs(
+    title = "Yearly HPI Range",
+    subtitle = "Highest Quarterly HPI minus Lowest Quarterly HPI",
+    x = "Year",
+    y = "HPI Range"
+  )
+
+hpi_range_plot
+```
+
+# Final Summary
+
+This file avoids repeating the team's existing mortgage-vs-HPI normalized time graph and income-vs-HPI dual-axis time graph. Instead, it adds the remaining parts of Step 2: correlation analysis, regression models, R-squared comparison, and noise/error analysis.
+
+```{r final-summary}
+cat("Step 2 Data Analysis Summary\n\n")
+cat("This R Markdown file adds scatter plots, correlation analysis, regression R-squared comparison, and noise/error analysis.\n")
+cat("The correlation matrix and heatmap help identify which variables are most linearly related to HPI.\n")
+cat("The regression models compare how much income, mortgage rates, and both variables together explain HPI.\n")
+cat("The residual plot, RMSE, MAE, and HPI range show how much noise or unexplained variation remains.\n")
+```
