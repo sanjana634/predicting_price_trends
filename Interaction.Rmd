@@ -1,0 +1,35 @@
+---
+title: "EDA_Linear"
+author: "Justin Yeo"
+date: "2026-05-03"
+output: pdf_document
+---
+
+```{R}
+
+names = c("Year","Average","Lowest","Highest", "numberOfWeeks")
+
+median = read_csv("cleaned_mortgage_rates_annual_avg.csv", col_names = names)
+median = median %>% slice(5:nrow(median))
+
+house = read_csv("CASTHPI_yearly_cleaned.csv")
+house = house %>% select(-Year)
+
+income = read_csv("cleaned_income_data.csv")
+income = income %>% select(-Date)
+
+combined = cbind(median, house, income)
+combined <- combined %>% mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+cor_mat <- cor(combined[, c("Average", "Yearly_Average_HPI", "Median_Household_Income")],
+               use = "pairwise.complete.obs", method = "pearson")
+cor_mat
+```
+High interaction (-0.814) between the two variables (mortgage rate average and median household income)
+
+```{R}
+interactionModel = lm(combined$Yearly_Average_HPI ~ combined$Median_Household_Income + combined$Average + combined$Median_Household_Income:combined$Average)
+summary(interactionModel)
+plot(interactionModel)
+```
+

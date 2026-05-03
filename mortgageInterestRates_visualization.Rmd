@@ -1,0 +1,57 @@
+---
+title: "predictHousePrice_visualizations"
+author: "Justin Yeo"
+date: "2026-05-02"
+output: pdf_document
+---
+
+Visualizations for comparing Yearly average mortgage rate against Yearly average HPI:
+
+```{R}
+library(tidyverse)
+
+names = c("Year","Average","Lowest","Highest", "numberOfWeeks")
+
+median = read_csv("cleaned_mortgage_rates_annual_avg.csv", col_names = names)
+median = median %>% slice(5:nrow(median))
+
+house = read_csv("CASTHPI_yearly_cleaned.csv")
+house = house %>% select(-Year)
+
+combined = cbind(median, house)
+
+combined$Year <- as.numeric(as.character(combined$Year))
+combined$Yearly_Average_HPI <- as.numeric(as.character(combined$Yearly_Average_HPI))
+combined$Average <- as.numeric(as.character(combined$Average))
+
+min_max <- function(x) (x - min(x, na.rm=TRUE)) / (max(x, na.rm=TRUE) - min(x, na.rm=TRUE))
+
+combined$Average <- min_max(combined$Average)
+combined$Yearly_Average_HPI<- min_max(combined$Yearly_Average_HPI)
+
+ggplot() +
+  geom_point(data = combined, aes(x = Year, y = Yearly_Average_HPI, color = "Yearly HPI")) +
+  geom_point(data = combined, aes(x = Year, y = Average, color = "Average")) +
+  scale_color_manual("", values = c("Yearly HPI" = "blue", "Average" = "green")) +
+  labs(title = "Year vs avg_mortgage_rate_30yr_pct (Average), Year vs Yearly HPI", subtitle = "normalized using max-min formula")
+
+ggplot()+ 
+  geom_point(data = combined, aes(x = Year, y = Average)) + 
+  labs(title = "Year vs avg_mortgage_rate_30yr_pct (Average)")
+```
+
+
+
+Why a Linear Model will not work for this predictor: Adjusted R^2 is low, QQ plot and residuals plot indicates high outliers. 
+
+```{R}
+cor(combined$Average, combined$Yearly_Average_HPI)
+
+model = lm(combined$Yearly_Average_HPI ~ combined$Average) 
+
+summary(model)
+
+par(mfrow = c(2,2))
+plot(model)
+par(mfrow = c(1,1))
+```
