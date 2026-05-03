@@ -30,10 +30,12 @@ combined$Average <- min_max(combined$Average)
 combined$Yearly_Average_HPI<- min_max(combined$Yearly_Average_HPI)
 
 ggplot() +
-  geom_point(data = combined, aes(x = Year, y = Yearly_Average_HPI, color = "Yearly HPI")) +
-  geom_point(data = combined, aes(x = Year, y = Average, color = "Average")) +
-  scale_color_manual("", values = c("Yearly HPI" = "blue", "Average" = "green")) +
-  labs(title = "Year vs avg_mortgage_rate_30yr_pct (Average), Year vs Yearly HPI", subtitle = "normalized using max-min formula")
+  geom_line(data = combined, aes(x = Year, y = Yearly_Average_HPI, color = "Yearly HPI")) +
+  geom_line(data = combined, aes(x = Year, y = Average, color = "Average mortgage rate")) +
+  scale_color_manual("", values = c("Yearly HPI" = "blue", "Average mortgage rate" = "green")) +
+  labs(title = "Year vs avg_mortgage_rate_30yr_pct (Average), Year vs Yearly HPI", 
+       subtitle = "normalized using max-min formula",
+       y = "% of max value")
 
 ggplot()+ 
   geom_point(data = combined, aes(x = Year, y = Average)) + 
