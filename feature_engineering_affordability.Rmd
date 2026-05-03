@@ -1,0 +1,331 @@
+---
+title: "Feature Engineering: Affordability Analysis"
+author: "Harjot Singh "
+date: "2026-05-03"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+  pdf_document: default
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+
+options(scipen = 999)
+```
+
+# Purpose
+
+This file completes the feature engineering step for the housing prediction project.
+
+For this step, we are ignoring regional indicators for now because the current datasets are statewide California data. Instead, this file focuses on creating affordability-related features using:
+
+- House Price Index
+- Median household income
+- Mortgage interest rates
+
+Important note: HPI is an index, not an actual dollar home price. Because of that, the HPI-to-income ratio should be interpreted as a relative affordability indicator, not the literal number of years of income needed to buy a house.
+
+# Load Data
+
+```{r load-data}
+required_files <- c(
+  "CASTHPI_yearly_cleaned.csv",
+  "cleaned_income_data.csv",
+  "cleaned_mortgage_rates_annual_avg.csv"
+)
+
+missing_files <- required_files[!file.exists(required_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    paste(
+      "Missing file(s):",
+      paste(missing_files, collapse = ", "),
+      "\nCurrent working directory is:",
+      getwd(),
+      "\nMove this Rmd file into the same folder as the CSV files or set the working directory correctly."
+    )
+  )
+}
+
+hpi_data <- read_csv("CASTHPI_yearly_cleaned.csv")
+
+income_data <- read_csv("cleaned_income_data.csv") %>%
+  rename(Year = Date)
+
+mortgage_data <- read_csv(
+  "cleaned_mortgage_rates_annual_avg.csv",
+  skip = 7,
+  col_names = c(
+    "Year",
+    "Average_Mortgage_Rate",
+    "Lowest_Mortgage_Rate",
+    "Highest_Mortgage_Rate",
+    "Number_Of_Weeks"
+  )
+)
+
+glimpse(hpi_data)
+glimpse(income_data)
+glimpse(mortgage_data)
+```
+
+# Clean and Merge Data
+
+```{r clean-and-merge}
+hpi_data <- hpi_data %>%
+  mutate(
+    Year = as.numeric(Year),
+    Yearly_Average_HPI = as.numeric(Yearly_Average_HPI),
+    Lowest_Quarterly_HPI = as.numeric(Lowest_Quarterly_HPI),
+    Highest_Quarterly_HPI = as.numeric(Highest_Quarterly_HPI)
+  )
+
+income_data <- income_data %>%
+  mutate(
+    Year = as.numeric(Year),
+    Median_Household_Income = as.numeric(Median_Household_Income)
+  )
+
+mortgage_data <- mortgage_data %>%
+  mutate(
+    Year = as.numeric(Year),
+    Average_Mortgage_Rate = as.numeric(Average_Mortgage_Rate),
+    Lowest_Mortgage_Rate = as.numeric(Lowest_Mortgage_Rate),
+    Highest_Mortgage_Rate = as.numeric(Highest_Mortgage_Rate),
+    Number_Of_Weeks = as.numeric(Number_Of_Weeks)
+  )
+
+combined_data <- hpi_data %>%
+  left_join(income_data, by = "Year") %>%
+  left_join(mortgage_data, by = "Year") %>%
+  arrange(Year) %>%
+  drop_na()
+
+glimpse(combined_data)
+
+knitr::kable(
+  head(combined_data),
+  caption = "Preview of merged HPI, income, and mortgage data"
+)
+```
+
+# Create New Features
+
+```{r feature-engineering}
+feature_data <- combined_data %>%
+  mutate(
+    HPI_to_Income_Ratio = Yearly_Average_HPI / Median_Household_Income,
+
+    HPI_per_100k_Income = Yearly_Average_HPI / (Median_Household_Income / 100000),
+
+    Affordability_Index = HPI_to_Income_Ratio / first(HPI_to_Income_Ratio),
+
+    Income_Growth_From_Start = Median_Household_Income / first(Median_Household_Income),
+
+    HPI_Growth_From_Start = Yearly_Average_HPI / first(Yearly_Average_HPI),
+
+    Affordability_Gap = HPI_Growth_From_Start - Income_Growth_From_Start,
+
+    Mortgage_Adjusted_HPI = Yearly_Average_HPI * Average_Mortgage_Rate
+  )
+
+glimpse(feature_data)
+
+knitr::kable(
+  head(feature_data),
+  caption = "Preview of feature engineered dataset"
+)
+```
+
+# Feature Descriptions
+
+The new features are:
+
+```{r feature-description-table}
+feature_descriptions <- tibble(
+  Feature = c(
+    "HPI_to_Income_Ratio",
+    "HPI_per_100k_Income",
+    "Affordability_Index",
+    "Income_Growth_From_Start",
+    "HPI_Growth_From_Start",
+    "Affordability_Gap",
+    "Mortgage_Adjusted_HPI"
+  ),
+  Meaning = c(
+    "Yearly average HPI divided by median household income",
+    "HPI scaled per $100,000 of median household income",
+    "HPI-to-income ratio compared to the first year in the dataset",
+    "Median household income growth compared to the first year",
+    "HPI growth compared to the first year",
+    "Difference between HPI growth and income growth",
+    "HPI multiplied by average mortgage rate"
+  ),
+  Interpretation = c(
+    "Higher value suggests housing prices are higher relative to income",
+    "Higher value suggests worse affordability relative to a fixed income scale",
+    "Values above 1 suggest affordability worsened compared to the first year",
+    "Values above 1 mean income increased compared to the first year",
+    "Values above 1 mean HPI increased compared to the first year",
+    "Positive values mean HPI grew faster than income",
+    "Higher value suggests more buyer pressure from prices and interest rates together"
+  )
+)
+
+knitr::kable(
+  feature_descriptions,
+  caption = "Feature engineering descriptions"
+)
+```
+
+# Plot 1: HPI Relative to Income
+
+```{r hpi-relative-to-income}
+hpi_income_ratio_plot <- ggplot(feature_data, aes(x = Year, y = HPI_per_100k_Income)) +
+  geom_line(linewidth = 1, color = "darkred") +
+  geom_point(color = "darkred") +
+  theme_minimal() +
+  labs(
+    title = "Housing Price Index Relative to Income",
+    subtitle = "Higher values suggest worsening affordability relative to income",
+    x = "Year",
+    y = "HPI per $100,000 of Median Household Income"
+  )
+
+hpi_income_ratio_plot
+```
+
+# Plot 2: Relative Affordability Index
+
+```{r affordability-index-plot}
+affordability_index_plot <- ggplot(feature_data, aes(x = Year, y = Affordability_Index)) +
+  geom_line(linewidth = 1, color = "purple") +
+  geom_point(color = "purple") +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "Relative Housing Affordability Index",
+    subtitle = "Values above 1 mean affordability worsened compared to the first year",
+    x = "Year",
+    y = "Affordability Index"
+  )
+
+affordability_index_plot
+```
+
+# Plot 3: HPI Growth vs. Income Growth
+
+```{r hpi-growth-vs-income-growth}
+growth_data <- feature_data %>%
+  select(Year, Income_Growth_From_Start, HPI_Growth_From_Start) %>%
+  pivot_longer(
+    cols = -Year,
+    names_to = "Variable",
+    values_to = "Growth_From_Start"
+  )
+
+growth_comparison_plot <- ggplot(growth_data, aes(x = Year, y = Growth_From_Start, color = Variable)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "HPI Growth Compared to Income Growth",
+    subtitle = "Both variables are indexed to the first year in the dataset",
+    x = "Year",
+    y = "Growth Compared to First Year",
+    color = "Variable"
+  )
+
+growth_comparison_plot
+```
+
+# Plot 4: Affordability Gap
+
+```{r affordability-gap-plot}
+affordability_gap_plot <- ggplot(feature_data, aes(x = Year, y = Affordability_Gap)) +
+  geom_line(linewidth = 1, color = "orange") +
+  geom_point(color = "orange") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "Affordability Gap",
+    subtitle = "Positive values mean HPI grew faster than income",
+    x = "Year",
+    y = "HPI Growth - Income Growth"
+  )
+
+affordability_gap_plot
+```
+
+# Plot 5: Mortgage-Adjusted HPI
+
+```{r mortgage-adjusted-hpi}
+mortgage_adjusted_hpi_plot <- ggplot(feature_data, aes(x = Year, y = Mortgage_Adjusted_HPI)) +
+  geom_line(linewidth = 1, color = "darkgreen") +
+  geom_point(color = "darkgreen") +
+  theme_minimal() +
+  labs(
+    title = "Mortgage-Adjusted Housing Pressure",
+    subtitle = "Combines HPI and mortgage rates into one pressure indicator",
+    x = "Year",
+    y = "HPI x Mortgage Rate"
+  )
+
+mortgage_adjusted_hpi_plot
+```
+
+# Scatter Plot: Income vs. HPI with Regression Line
+
+```{r income-vs-hpi-regression}
+income_hpi_scatter_plot <- ggplot(
+  feature_data,
+  aes(x = Median_Household_Income, y = Yearly_Average_HPI)
+) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Median Household Income vs. Housing Price Index",
+    subtitle = "Regression line shows the linear trend between income and HPI",
+    x = "Median Household Income ($)",
+    y = "Yearly Average HPI"
+  )
+
+income_hpi_scatter_plot
+```
+
+# Save Feature Engineered Dataset
+
+```{r save-feature-data}
+write_csv(feature_data, "feature_engineered_affordability_data.csv")
+
+cat("Saved feature engineered dataset as: feature_engineered_affordability_data.csv\n")
+```
+
+# Written Summary
+
+For feature engineering, we created several affordability-related variables using the cleaned housing price, income, and mortgage rate datasets. The main feature is the HPI-to-income ratio, which compares housing price index values to median household income. Since HPI is an index rather than an actual dollar home price, this ratio is used as a relative affordability indicator instead of a literal measure of how many years of income are needed to buy a house.
+
+A larger affordability ratio or affordability index suggests that housing prices are increasing faster than income, which may indicate worsening affordability over time. We also created growth-based features to compare HPI growth and income growth relative to the first year in the dataset. Finally, we created a mortgage-adjusted HPI feature to combine the effect of housing price growth and mortgage interest rates.
+
+```{r final-summary}
+cat("Feature Engineering Summary\n\n")
+cat("Created HPI-to-income ratio as a relative affordability indicator.\n")
+cat("Created HPI per $100,000 of income for easier interpretation.\n")
+cat("Created an affordability index relative to the first year in the dataset.\n")
+cat("Created growth features comparing HPI growth and income growth.\n")
+cat("Created an affordability gap feature to show whether HPI grew faster than income.\n")
+cat("Created a mortgage-adjusted HPI pressure feature.\n")
+cat("Skipped regional indicators because the current datasets are statewide California data.\n")
+```
