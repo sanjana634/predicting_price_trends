@@ -1,0 +1,57 @@
+---
+title: "price_trends"
+author: "Abigail Wong"
+date: "2026-05-02"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+#install.packages("tidyverse")
+#install.packages("ggplot2")
+library(tidyverse)
+library(ggplot2)
+yearly_data <- read.csv("/Users/abigailwong/Desktop/ddsc_spring/CASTHPI_yearly_cleaned.csv")
+
+glimpse(yearly_data)
+
+#HPI = House Price Index
+
+ggplot(yearly_data, aes(x = Year, y = Yearly_Average_HPI)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  scale_y_continuous(limits = c(0, 920)) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(
+    x = "Year",
+    y = "Yearly Average HPI",
+    fill = "Yearly_Average_HPI",
+    title = "Yearly Average HPI between 1984 and 2023",
+  )
+
+
+ggplot(yearly_data, aes(x = Year, y = Lowest_Quarterly_HPI)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  scale_y_continuous(limits = c(0, 920)) +
+  theme_minimal() +
+  labs(
+    x = "Year", 
+    y = "Lowest Quarterly HPI",
+    fill = "Lowest_Quarterly_HPI",
+    title = "Lowest Quarterly HPI between 1984 and 2023"
+  )
+
+
+ggplot(yearly_data, aes(x = Year, y = Highest_Quarterly_HPI)) +
+  geom_bar(stat = "identity", fill = "darkseagreen") +
+  scale_y_continuous(limits = c(0, 920)) +
+  theme_minimal() +
+  labs(
+    x = "Year", 
+    y = "Higheset Quarterly HPI",
+    fill = "Highest_Quarterly_HPI",
+    title = "Highest Quarterly HPI between 1984 and 2023"
+  )
+```
+
