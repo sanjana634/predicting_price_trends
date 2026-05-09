@@ -4,7 +4,6 @@ author: "Abigail Wong"
 date: "2026-05-02"
 output:
   pdf_document: default
-  html_document: default
 ---
 
 ```{r}
@@ -15,8 +14,6 @@ library(ggplot2)
 yearly_data <- read.csv("/Users/abigailwong/Desktop/ddsc_spring/CASTHPI_yearly_cleaned.csv")
 
 glimpse(yearly_data)
-
-#HPI = House Price Index
 
 ggplot(yearly_data, aes(x = Year, y = Yearly_Average_HPI)) +
   geom_bar(stat = "identity", fill = "lightblue") +
@@ -54,4 +51,60 @@ ggplot(yearly_data, aes(x = Year, y = Highest_Quarterly_HPI)) +
     title = "Highest Quarterly HPI between 1984 and 2023"
   )
 ```
+
+Summary: After looking at this data, we can see that the Housing Price Index 
+(HPI) has more than tripled when comparing prices around 1990 to 2021 through 
+2023. This tells us that housing has become more expensive over time. Between
+the years 2005 - 2007, housing prices increased due to the financial crisis. 
+
+
+
+## Visualization: Present findings through graphs
+
+Make a correlation heatmap showing correlation coefficients between income, interest rates, and the price index to identify which variable(s) have the strongest effect on housing prices before models are run. 
+
+
+income, mortgage (not interest rates), price
+
+
+```{r}
+income_mortgage_price <- read.delim("/Users/abigailwong/income_mortgage_price.csv",
+                      header = FALSE, sep = "\t",
+                      col.names = c("date", "income", "price", "mortgage", "association"))
+
+income_mortgage_price <- income_mortgage_price |>
+  filter(association == 1)
+
+association_data <- income_mortgage_price |>
+  inner_join(income_mortgage_price, by = "price", relationship= "many-to-many")
+
+prep_data <- association_data |>
+  pivot_longer(
+    cols = -price,,
+    names_to = "Price",
+    values_to = "Strongest Effect"
+  )
+
+heatmap <- prep_data |>
+  group_by(price, association) |>
+  summarize(mean_strongest_effect = mean(association), .groups = "drop")
+
+ggplot(heatmap, aes(x = association, y = price, fill = mean_strongest_effect)) +
+  geom_tile() +
+  scale_fill_gradient(low = "blue", high = "red") +
+  labs(
+    x = "Association",
+    y = "Price",
+    fill = "Strongest Effect"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    legend.text = element_text(size = 14),
+    axis.text.y = element_text(size = 14)
+  )
+```
+
+
+
+
 
